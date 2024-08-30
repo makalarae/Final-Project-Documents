@@ -1,0 +1,272 @@
+-- create the database meteorite
+CREATE DATABASE meteorite;
+
+-- Creates the first table 
+-- REMEBER TO SET METEORITES AS DEFAULT SCHEMA
+CREATE TABLE meteorite_landings (
+    meteorite_id INT PRIMARY KEY,
+    name VARCHAR(255),
+    nametype VARCHAR(50),
+    recclass VARCHAR(50),
+    mass_g INT,
+    fall VARCHAR(50),
+    year INT,
+    reclat FLOAT,
+    reclong FLOAT,
+    GeoLocation VARCHAR(255)
+);
+
+SHOW VARIABLES LIKE 'secure_file_priv'; -- shows the location to put the csv in
+
+-- Loads file into table created above, meteorite_landigns
+LOAD DATA INFILE 'C:/ProgramData/MySQL/MySQL Server 8.1/Uploads/Meteorite_Landings.csv'
+INTO TABLE meteorite.meteorite_landings
+FIELDS TERMINATED BY ',' 
+ENCLOSED BY '"' 
+LINES TERMINATED BY '\n'  
+IGNORE 1 LINES             
+(name, meteorite_id, nametype, recclass, @mass_g, fall, @year, @reclat, @reclong, @GeoLocation)
+SET mass_g = NULLIF(@mass_g, ''),     -- Handle empty values
+    year = NULLIF(@year, ''),         -- Handle empty values
+    reclat = NULLIF(@reclat, ''),     -- Handle empty values
+    reclong = NULLIF(@reclong, ''),     -- Handle empty values
+    GeoLocation = TRIM(BOTH '"' FROM @GeoLocation
+    );
+    
+CREATE TABLE Regions 
+(
+    region_id INT PRIMARY KEY,
+    region_name VARCHAR(50)
+);
+
+INSERT INTO Regions (region_id, region_name)
+VALUES
+(1, 'Northwest'),
+(2, 'Northeast'),
+(3, 'Southwest'),
+(4, 'Southeast'),
+(5, 'UNKNOWN');
+
+-- Add columns to the Regions table
+ALTER TABLE Regions
+ADD COLUMN min_latitude FLOAT,
+ADD COLUMN max_latitude FLOAT,
+ADD COLUMN min_longitude FLOAT,
+ADD COLUMN max_longitude FLOAT;
+
+-- Update values for Northwest
+UPDATE Regions
+SET min_latitude = 0,
+    max_latitude = 90,
+    min_longitude = -180,
+    max_longitude = 0
+WHERE region_id = 1;
+
+-- Update values for Northeast
+UPDATE Regions
+SET min_latitude = 0,
+    max_latitude = 90,
+    min_longitude = 0,
+    max_longitude = 180
+WHERE region_id = 2;
+
+-- Update values for Southwest
+UPDATE Regions
+SET min_latitude = -90,
+    max_latitude = 0,
+    min_longitude = -180,
+    max_longitude = 0
+WHERE region_id = 3;
+
+-- Update values for Southeast
+UPDATE Regions
+SET min_latitude = -90,
+    max_latitude = 0,
+    min_longitude = 0,
+    max_longitude = 180
+WHERE region_id = 4;
+
+-- Update values for UNKNOWN
+UPDATE Regions
+SET min_latitude = NULL,
+    max_latitude = NULL,
+    min_longitude = NULL,
+    max_longitude = NULL
+WHERE region_id = 5;
+
+-- Adds the foreign key to meteorite_landings
+ALTER TABLE meteorite_landings
+ADD COLUMN region_id INT,
+ADD FOREIGN KEY (region_id) REFERENCES Regions(region_id);
+
+-- Adds the correct value in meteorite_landings based off my region table
+UPDATE meteorite_landings AS ml
+LEFT JOIN regions AS re 
+	ON ml.reclat BETWEEN re.min_latitude 
+    AND re.max_latitude
+	AND ml.reclong BETWEEN re.min_longitude 
+    AND re.max_longitude
+SET ml.region_id = COALESCE(re.region_id, 5); -- Assign 5 for "UNKNOWN"
+
+-- Drop reclong and reclat columns from the table meteorite_landings
+ALTER TABLE meteorite_landings
+DROP COLUMN reclong,
+DROP COLUMN reclat;
+
+-- Create meteorite_classification table
+CREATE TABLE meteorite_classification(
+	classification_id INT PRIMARY KEY,
+    recclass varchar(225),
+    category varchar(50)
+);
+
+-- Load classification table in
+LOAD DATA INFILE 'C:/ProgramData/MySQL/MySQL Server 8.1/Uploads/recclass.csv'
+INTO TABLE meteorite.meteorite_classification
+FIELDS TERMINATED BY ',' 
+ENCLOSED BY '"'
+LINES TERMINATED BY '\n'  
+IGNORE 1 LINES;
+   
+-- updates meteorite_landings to put in the classification_id	
+ALTER TABLE meteorite_landings
+ADD COLUMN classification_id INT,
+ADD FOREIGN KEY (classification_id) REFERENCES meteorite_classification(classification_id);
+
+-- updates the values to be correct
+UPDATE meteorite_landings AS ml
+INNER JOIN meteorite_classification AS mc 
+	ON ml.recclass = mc.recclass
+SET ml.classification_id = mc.classification_id;
+
+-- drop the unnecessary recclass
+ALTER TABLE meteorite_landings
+DROP COLUMN recclass;
+
+SELECT ml.name, ml.mass_g, re.region_name, mc.category
+FROM meteorite_landings AS ml
+INNER JOIN regions AS re
+	ON re.region_id = ml.region_id
+INNER JOIN meteorite_classification AS mc
+	ON mc.classification_id = ml.classification_id;
+
+-- create a view to tell us if the meteorite is average size or not
+CREATE VIEW meteorite_sizing AS
+SELECT ml.name, ml.mass_g, re.region_name, mc.category,
+    CASE
+        WHEN ml.mass_g BETWEEN 100 AND 10000 THEN 'Average'
+        ELSE 'Not Average'
+    END AS size_category
+FROM meteorite_landings AS ml
+INNER JOIN regions AS re 
+	ON re.region_id = ml.region_id
+INNER JOIN meteorite_classification AS mc 
+	ON mc.classification_id = ml.classification_id;
+
+-- create a view for this and use later
+CREATE VIEW century_found AS
+SELECT ml.name, re.region_name, mc.category, ml.year,
+	CASE
+		WHEN ml.year BETWEEN 0 AND 100 THEN '1st Century'
+        WHEN ml.year BETWEEN 101 AND 200 THEN '2nd Century'
+        WHEN ml.year BETWEEN 201 AND 300 THEN '3rd Century'
+        WHEN ml.year BETWEEN 301 AND 400 THEN '4th Century'
+        WHEN ml.year BETWEEN 401 AND 500 THEN '5th Century'
+        WHEN ml.year BETWEEN 501 AND 600 THEN '6th Century'
+        WHEN ml.year BETWEEN 601 AND 700 THEN '7th Century'
+        WHEN ml.year BETWEEN 701 AND 800 THEN '8th Century'
+        WHEN ml.year BETWEEN 801 AND 900 THEN '9th Century'
+        WHEN ml.year BETWEEN 901 AND 1000 THEN '10th Century'
+        WHEN ml.year BETWEEN 1001 AND 1100 THEN '11th Century'
+        WHEN ml.year BETWEEN 1101 AND 1200 THEN '12th Century'
+        WHEN ml.year BETWEEN 1201 AND 1300 THEN '13th Century'
+		WHEN ml.year BETWEEN 1301 AND 1400 THEN '14th Century'
+        WHEN ml.year BETWEEN 1401 AND 1500 THEN '15th Century'
+        WHEN ml.year BETWEEN 1501 AND 1600 THEN '16th Century'
+        WHEN ml.year BETWEEN 1601 AND 1700 THEN '17th Century'
+        WHEN ml.year BETWEEN 1701 AND 1800 THEN '18th Century'
+        WHEN ml.year BETWEEN 1801 AND 1900 THEN '19th Century'
+        WHEN ml.year BETWEEN 1901 AND 2000 THEN '20th Century'
+        WHEN ml.year BETWEEN 2001 AND 2100 THEN '21st Century'
+		ELSE 'Unknown'
+	End AS century_found
+FROM meteorite_landings AS ml
+INNER JOIN regions AS re 
+	ON re.region_id = ml.region_id
+INNER JOIN meteorite_classification AS mc 
+	ON mc.classification_id = ml.classification_id
+WHERE ml.fall = 'Found';
+
+
+-- Starting my ten Queries
+-- 1. WITH ROLLUP for Mass Sum by Region and Category Aggregate on sum
+/*(sums the mass for each category by region rolls up that value for each region, and Final rollup at the end)*/
+SELECT re.region_name, mc.category, SUM(ml.mass_g) AS total_mass
+FROM meteorite_landings AS ml
+INNER JOIN regions AS re 
+	ON re.region_id = ml.region_id
+INNER JOIN meteorite_classification AS mc 
+	ON mc.classification_id = ml.classification_id
+GROUP BY re.region_name, 
+	mc.category WITH ROLLUP;
+
+-- 2. Select Statement using IFNULL and ORDER BY checks to see if the year is null then sets to 0 and orders by date decending
+SELECT ml.name,
+    IFNULL(ml.year, 0) AS adjusted_year
+FROM meteorite_landings AS ml
+ORDER BY adjusted_year DESC;
+
+-- 3. Returns if the meteorite is modern or not
+SELECT cf.name, cf.century_found,
+    IF(cf.century_found = '20th Century' OR cf.century_found = '21st Century', 'Modern', 'Ancient') AS time_found
+FROM century_found AS cf;
+
+-- 4. HAVING Stement for regions groups with sum of mass greater then 100,000,000 grams
+SELECT re.region_name,
+    SUM(ml.mass_g) AS total_mass
+FROM meteorite_landings AS ml
+INNER JOIN regions AS re 
+	ON re.region_id = ml.region_id
+GROUP BY re.region_name
+HAVING total_mass > 100000000; 
+
+-- 5.  SELECT statement that returns all meteorites that are Chondrites
+SELECT ml.name, re.region_name, mc.category
+FROM meteorite_landings AS ml
+INNER JOIN regions AS re
+	ON re.region_id = ml.region_id
+INNER JOIN meteorite_classification AS mc
+	ON mc.classification_id = ml.classification_id
+WHERE mc.classification_id = 1;
+
+-- 6. Counts all the meteorites that full within that year.
+SELECT ml.year,
+	COUNT(*) as count
+FROM meteorite_landings as ml
+GROUP BY ml.year
+ORDER BY count DESC;
+
+-- 7. Calculating Average Mass per Region:
+SELECT region_name, 
+	AVG(mass_g) AS average_mass 
+FROM meteorite_sizing 
+GROUP BY region_name;
+
+-- 8. Selects the amount of fell vs found meteorites and returns the values
+SELECT CONCAT(ml.fall, ': ', COUNT(*)) AS fell_vs_found
+FROM meteorite_landings AS ml 
+GROUP BY ml.fall;
+
+-- 9. Selecting Relict meteorites found in the Modern times
+SELECT ml.meteorite_id, cf.name, ml.nametype, cf.century_found
+FROM meteorite_landings AS ml
+JOIN century_found AS cf
+	ON cf.name = ml.name
+WHERE nametype != 'Valid'
+	AND century_found IN ('20th Century', '21st Century');
+    
+-- 10. select the largest meteorite by size
+SELECT ms.name, ms.category, region_name, ms.mass_g, ms.size_category
+FROM meteorite_sizing AS ms
+ORDER BY ms.mass_g DESC
+LIMIT 1;
