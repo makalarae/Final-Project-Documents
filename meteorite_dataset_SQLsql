@@ -1,4 +1,4 @@
--- create the database meteorite
+orit-- create the database meteorite
 CREATE DATABASE meteorite;
 
 -- Creates the first table 
